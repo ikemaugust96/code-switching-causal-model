@@ -1,0 +1,10 @@
+# Data files (too large for GitHub)
+data/
+
+# Python
+__pycache__/
+*.pyc
+
+# IDE
+.vscode/
+.DS_Store

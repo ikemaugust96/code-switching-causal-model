@@ -1,0 +1,26 @@
+{
+  "Majority Class": {
+    "switch_accuracy": 0.8800962249021241,
+    "switch_f1": 0.0,
+    "duration_accuracy": 0.542223970626803,
+    "duration_f1_macro": 0.234390499674064,
+    "num_test_instances": 63601,
+    "num_switches": 7626
+  },
+  "Last Language": {
+    "switch_accuracy": 0.8800962249021241,
+    "switch_f1": 0.0,
+    "duration_accuracy": 0.13899816417519015,
+    "duration_f1_macro": 0.08135697290659298,
+    "num_test_instances": 63601,
+    "num_switches": 7626
+  },
+  "3-gram": {
+    "switch_accuracy": 0.8958192481250294,
+    "switch_f1": 0.23185717597959657,
+    "duration_accuracy": 0.22488853920797272,
+    "duration_f1_macro": 0.1785737215909451,
+    "num_test_instances": 63601,
+    "num_switches": 7626
+  }
+}
