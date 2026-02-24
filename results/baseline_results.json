@@ -1,26 +1,34 @@
 {
   "Majority Class": {
-    "switch_accuracy": 0.8800962249021241,
+    "switch_accuracy": 0.797267338563859,
     "switch_f1": 0.0,
-    "duration_accuracy": 0.542223970626803,
-    "duration_f1_macro": 0.234390499674064,
+    "duration_accuracy": 0.3891732588800993,
+    "duration_f1_macro": 0.18676492481762694,
     "num_test_instances": 63601,
-    "num_switches": 7626
+    "num_switches": 12894
   },
   "Last Language": {
-    "switch_accuracy": 0.8800962249021241,
+    "switch_accuracy": 0.797267338563859,
     "switch_f1": 0.0,
-    "duration_accuracy": 0.13899816417519015,
-    "duration_f1_macro": 0.08135697290659298,
+    "duration_accuracy": 0.3891732588800993,
+    "duration_f1_macro": 0.18676492481762694,
     "num_test_instances": 63601,
-    "num_switches": 7626
+    "num_switches": 12894
   },
   "3-gram": {
-    "switch_accuracy": 0.8958192481250294,
-    "switch_f1": 0.23185717597959657,
-    "duration_accuracy": 0.22488853920797272,
-    "duration_f1_macro": 0.1785737215909451,
+    "switch_accuracy": 0.8594518954104495,
+    "switch_f1": 0.4732158642229949,
+    "duration_accuracy": 0.4811540251279665,
+    "duration_f1_macro": 0.4204812945812657,
     "num_test_instances": 63601,
-    "num_switches": 7626
+    "num_switches": 12894
+  },
+  "Logistic Regression": {
+    "switch_accuracy": 0.6016729296709171,
+    "switch_f1": 0.3827900404424304,
+    "duration_accuracy": 0.4379556382813712,
+    "duration_f1_macro": 0.43900209976781196,
+    "num_test_instances": 63601,
+    "num_switches": 12894
   }
 }

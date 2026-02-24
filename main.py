@@ -1,3 +1,4 @@
+
 """
 Main Runner Script for Code-Switch Prediction Project
 
@@ -107,7 +108,8 @@ def main(args):
     print("="*70)
     
     from causal_baselines import (MajorityClassBaseline, NGramBaseline,
-                                   LastLanguageBaseline, BaselineEvaluator)
+                                   LastLanguageBaseline, LogisticRegressionBaseline,
+                                   BaselineEvaluator)
     
     evaluator = BaselineEvaluator()
     
@@ -123,11 +125,17 @@ def main(args):
     last_lang_model.train(train_data)
     evaluator.evaluate_model(last_lang_model, "Last Language", test_data)
     
-    # Baseline 3: N-gram (default n=3)
+    # Baseline 3: 3-gram
     print(f"\n--- Baseline 3: {args.n_gram}-gram ---")
     ngram_model = NGramBaseline(n=args.n_gram)
     ngram_model.train(train_data)
     evaluator.evaluate_model(ngram_model, f"{args.n_gram}-gram", test_data)
+    
+    # Baseline 4: Logistic Regression
+    print("\n--- Baseline 4: Logistic Regression ---")
+    lr_model = LogisticRegressionBaseline(context_window=5)
+    lr_model.train(train_data)
+    evaluator.evaluate_model(lr_model, "Logistic Regression", test_data)
     
     # Step 4: Compare Results
     print("\n" + "="*70)

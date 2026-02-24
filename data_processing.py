@@ -21,6 +21,13 @@ from typing import List, Dict, Tuple, Optional
 import warnings
 warnings.filterwarnings('ignore')
 
+# Lazy import for language detection
+try:
+    from langdetect import detect
+    HAS_LANGDETECT = True
+except Exception:
+    HAS_LANGDETECT = False
+
 # Set style for visualizations
 sns.set_style("whitegrid")
 plt.rcParams['figure.figsize'] = (12, 6)
@@ -187,26 +194,42 @@ class SwitchLinguaProcessor:
         # This is a simplified version - you may need more sophisticated tokenization
         tokens = re.findall(r'\w+|[^\w\s]', text_data)
         
-        # Simple language detection based on Unicode ranges
-        # This is heuristic - you may want to use a proper language detection library
+        # Hybrid language detection: fastText + Unicode fallback
         language_ids = []
-        for token in tokens:
-            if any('\u0600' <= c <= '\u06FF' for c in token):  # Arabic
-                language_ids.append('ar')
-            elif any('\u4e00' <= c <= '\u9fff' for c in token):  # Chinese
-                language_ids.append('zh')
-            elif any('\u0400' <= c <= '\u04FF' for c in token):  # Cyrillic/Russian
-                language_ids.append('ru')
-            elif any('\u3040' <= c <= '\u309F' or '\u30A0' <= c <= '\u30FF' for c in token):  # Japanese
-                language_ids.append('ja')
-            elif any('\uAC00' <= c <= '\uD7AF' for c in token):  # Korean
-                language_ids.append('ko')
-            elif any('\u0900' <= c <= '\u097F' for c in token):  # Hindi/Devanagari
-                language_ids.append('hi')
-            else:
-                # Default to English for Latin script
-                language_ids.append('en')
+        allowed_langs = {'en', 'es', 'hi', 'zh', 'ar', 'ru', 'ja', 'ko', 'fr', 'de', 'pt', 'it'}
         
+        for token in tokens:
+            lang = None
+            
+            # Try langdetect first
+            if HAS_LANGDETECT and len(token) >= 3 and any(c.isalpha() for c in token):
+                try:
+                    detected_lang = detect(token)
+                    if detected_lang in allowed_langs:
+                        lang = detected_lang
+                except Exception:
+                    pass
+            
+            # Fallback to Unicode detection
+            if lang is None:
+                if any('\u0600' <= c <= '\u06FF' for c in token):  # Arabic
+                    lang = 'ar'
+                elif any('\u4e00' <= c <= '\u9fff' for c in token):  # Chinese
+                    lang = 'zh'
+                elif any('\u0400' <= c <= '\u04FF' for c in token):  # Cyrillic/Russian
+                    lang = 'ru'
+                elif any('\u3040' <= c <= '\u309F' or '\u30A0' <= c <= '\u30FF' for c in token):  # Japanese
+                    lang = 'ja'
+                elif any('\uAC00' <= c <= '\uD7AF' for c in token):  # Korean
+                    lang = 'ko'
+                elif any('\u0900' <= c <= '\u097F' for c in token):  # Hindi/Devanagari
+                    lang = 'hi'
+                else:
+                    # Default to English for Latin script
+                    lang = 'en'
+            
+            language_ids.append(lang)
+            
         return tokens, language_ids
     
     def process_examples(self, split: str = 'train', max_examples: Optional[int] = None):

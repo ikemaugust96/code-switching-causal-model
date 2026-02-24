@@ -4,7 +4,8 @@ Causal Baselines for Streaming Code-Switch Prediction
 This module implements several baseline models that respect causal constraints:
 - Majority Class Baseline
 - N-gram Baseline (uses only historical context)
-- Simple RNN Baseline (causal by design)
+- Last Language Baseline
+- Logistic Regression Baseline (learned features with causal constraints)
 
 All baselines predict only using past information (positions 1 to t)
 to predict what happens at position t+1.
@@ -15,6 +16,8 @@ import json
 from collections import Counter, defaultdict
 from typing import List, Dict, Tuple
 from sklearn.metrics import f1_score, accuracy_score, classification_report, confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.preprocessing import LabelEncoder
 import matplotlib.pyplot as plt
 import seaborn as sns
 
@@ -223,6 +226,169 @@ class LastLanguageBaseline:
                 duration_preds.append(0)  # Duration doesn't matter if no switch
         
         return np.array(switch_preds), np.array(duration_preds)
+
+
+class LogisticRegressionBaseline:
+    """
+    Learned baseline using Logistic Regression with hand-crafted features.
+    
+    Extracts causal features from historical context to predict switches and durations.
+    Features include: current language, previous languages, position, context patterns.
+    """
+    
+    def __init__(self, context_window: int = 5):
+        """
+        Args:
+            context_window: Number of previous positions to use as features
+        """
+        self.context_window = context_window
+        self.switch_model = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced')
+        self.duration_model = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced')
+        self.lang_encoder = LabelEncoder()
+        self.fitted = False
+        self.name = "Logistic Regression Baseline"
+    
+    def _extract_features(self, language_ids: List[str], position: int) -> np.ndarray:
+        """
+        Extract causal features for prediction at position.
+        
+        CAUSAL CONSTRAINT: Only uses information from positions 0 to position (inclusive).
+        
+        Args:
+            language_ids: Full sequence of language IDs
+            position: Current position (predicting position+1)
+            
+        Returns:
+            Feature vector as numpy array
+        """
+        features = []
+        
+        # Feature 1: Current language (one-hot encoded position in vocabulary)
+        current_lang = language_ids[position]
+        current_lang_encoded = self.lang_encoder.transform([current_lang])[0]
+        features.append(current_lang_encoded)
+        
+        # Feature 2-6: Previous N languages (with padding for early positions)
+        for i in range(1, self.context_window + 1):
+            if position - i >= 0:
+                prev_lang = language_ids[position - i]
+                prev_lang_encoded = self.lang_encoder.transform([prev_lang])[0]
+                features.append(prev_lang_encoded)
+            else:
+                features.append(-1)  # Padding for positions near start
+        
+        # Feature 7: Position in sequence (normalized)
+        features.append(position / 100.0)  # Normalize to ~0-1 range
+        
+        # Feature 8: Context length
+        features.append(min(position + 1, 10) / 10.0)  # Capped and normalized
+        
+        # Feature 9: Number of switches seen so far
+        switches_so_far = sum(1 for i in range(position) 
+                            if language_ids[i] != language_ids[i+1] if i+1 <= position)
+        features.append(switches_so_far / max(position, 1))  # Switch rate so far
+        
+        # Feature 10: Stability feature - how long have we been in current language?
+        stability = 0
+        for i in range(position, -1, -1):
+            if language_ids[i] == current_lang:
+                stability += 1
+            else:
+                break
+        features.append(min(stability, 10) / 10.0)  # Capped and normalized
+        
+        return np.array(features)
+    
+    def train(self, training_data: List[Dict]):
+        """
+        Train logistic regression models on extracted features.
+        
+        Args:
+            training_data: List of processed examples with streaming labels
+        """
+        # Fit language encoder on all languages in training data
+        all_langs = []
+        for example in training_data:
+            all_langs.extend(example['language_ids'])
+        
+        unique_langs = sorted(list(set(all_langs)))
+        self.lang_encoder.fit(unique_langs)
+        
+        print(f"\n{self.name} - Extracting features...")
+        
+        # Extract features and labels
+        X_switch = []
+        y_switch = []
+        X_duration = []
+        y_duration = []
+        
+        for example in training_data:
+            language_ids = example['language_ids']
+            
+            for label_info in example['streaming_labels']:
+                position = label_info['position']
+                
+                # Extract causal features
+                features = self._extract_features(language_ids, position)
+                
+                # Switch prediction task
+                X_switch.append(features)
+                y_switch.append(label_info['switch_label'])
+                
+                # Duration prediction task (only for switches)
+                if label_info['switch_label'] == 1:
+                    X_duration.append(features)
+                    y_duration.append(label_info['duration_label'])
+        
+        X_switch = np.array(X_switch)
+        y_switch = np.array(y_switch)
+        
+        print(f"  Training switch model on {len(X_switch)} instances...")
+        self.switch_model.fit(X_switch, y_switch)
+        
+        if len(X_duration) > 0:
+            X_duration = np.array(X_duration)
+            y_duration = np.array(y_duration)
+            print(f"  Training duration model on {len(X_duration)} switch instances...")
+            self.duration_model.fit(X_duration, y_duration)
+        
+        self.fitted = True
+        print(f"✓ {self.name} - Training Complete")
+        print(f"  Features per instance: {X_switch.shape[1]}")
+        print(f"  Unique languages: {len(unique_langs)}")
+    
+    def predict(self, test_data: List[Dict]) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Predict using trained logistic regression models.
+        
+        Args:
+            test_data: List of processed examples
+            
+        Returns:
+            (switch_predictions, duration_predictions)
+        """
+        if not self.fitted:
+            raise ValueError("Model not trained. Call train() first.")
+        
+        X_test = []
+        
+        for example in test_data:
+            language_ids = example['language_ids']
+            
+            for label_info in example['streaming_labels']:
+                position = label_info['position']
+                features = self._extract_features(language_ids, position)
+                X_test.append(features)
+        
+        X_test = np.array(X_test)
+        
+        # Predict switches
+        switch_preds = self.switch_model.predict(X_test)
+        
+        # Predict durations
+        duration_preds = self.duration_model.predict(X_test)
+        
+        return switch_preds, duration_preds
 
 
 class BaselineEvaluator:

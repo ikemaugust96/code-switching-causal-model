@@ -5,6 +5,10 @@ data/
 __pycache__/
 *.pyc
 
+# Virtual environment 
+.venv/
+venv/
+
 # IDE
 .vscode/
 .DS_Store
