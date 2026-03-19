@@ -1,34 +1,34 @@
 {
   "Majority Class": {
-    "switch_accuracy": 0.797267338563859,
+    "switch_accuracy": 0.6599671826859189,
     "switch_f1": 0.0,
-    "duration_accuracy": 0.3891732588800993,
-    "duration_f1_macro": 0.18676492481762694,
-    "num_test_instances": 63601,
-    "num_switches": 12894
+    "duration_accuracy": 0.7019869355916486,
+    "duration_f1_macro": 0.2749676161478573,
+    "num_test_instances": 3019138,
+    "num_switches": 1026606
   },
   "Last Language": {
-    "switch_accuracy": 0.797267338563859,
+    "switch_accuracy": 0.6599671826859189,
     "switch_f1": 0.0,
-    "duration_accuracy": 0.3891732588800993,
-    "duration_f1_macro": 0.18676492481762694,
-    "num_test_instances": 63601,
-    "num_switches": 12894
+    "duration_accuracy": 0.7019869355916486,
+    "duration_f1_macro": 0.2749676161478573,
+    "num_test_instances": 3019138,
+    "num_switches": 1026606
   },
   "3-gram": {
-    "switch_accuracy": 0.8594518954104495,
-    "switch_f1": 0.4732158642229949,
-    "duration_accuracy": 0.4811540251279665,
-    "duration_f1_macro": 0.4204812945812657,
-    "num_test_instances": 63601,
-    "num_switches": 12894
+    "switch_accuracy": 0.8215994101627683,
+    "switch_f1": 0.686200210669575,
+    "duration_accuracy": 0.724826272201799,
+    "duration_f1_macro": 0.4275990982127909,
+    "num_test_instances": 3019138,
+    "num_switches": 1026606
   },
   "Logistic Regression": {
-    "switch_accuracy": 0.6016729296709171,
-    "switch_f1": 0.3827900404424304,
-    "duration_accuracy": 0.4379556382813712,
-    "duration_f1_macro": 0.43900209976781196,
-    "num_test_instances": 63601,
-    "num_switches": 12894
+    "switch_accuracy": 0.7491234252955645,
+    "switch_f1": 0.637923196394486,
+    "duration_accuracy": 0.5728945671465002,
+    "duration_f1_macro": 0.46910425109254755,
+    "num_test_instances": 3019138,
+    "num_switches": 1026606
   }
 }

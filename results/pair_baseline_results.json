@@ -1,0 +1,56 @@
+[
+  {
+    "pair": "Cantonese-English",
+    "train_examples": 95438,
+    "test_examples": 23810,
+    "switch_accuracy": 0.809146745715987,
+    "switch_f1": 0.736635940132818,
+    "duration_accuracy": 0.7875062513903593,
+    "duration_f1_macro": 0.4863484702667311
+  },
+  {
+    "pair": "Arabic-English",
+    "train_examples": 6816,
+    "test_examples": 1732,
+    "switch_accuracy": 0.859862755031548,
+    "switch_f1": 0.4729439478971801,
+    "duration_accuracy": 0.4789915966386555,
+    "duration_f1_macro": 0.416295343157169
+  },
+  {
+    "pair": "English-Philippines",
+    "train_examples": 6810,
+    "test_examples": 1727,
+    "switch_accuracy": 0.9284811532481061,
+    "switch_f1": 0.6747483192252761,
+    "duration_accuracy": 0.7440995109504571,
+    "duration_f1_macro": 0.5231147713091961
+  },
+  {
+    "pair": "French-German",
+    "train_examples": 6779,
+    "test_examples": 1732,
+    "switch_accuracy": 0.6756787115281594,
+    "switch_f1": 0.6151164340719625,
+    "duration_accuracy": 0.7321458799631351,
+    "duration_f1_macro": 0.2828063006992427
+  },
+  {
+    "pair": "Chinese-English",
+    "train_examples": 6854,
+    "test_examples": 1604,
+    "switch_accuracy": 0.8371259568545582,
+    "switch_f1": 0.715296502787633,
+    "duration_accuracy": 0.7422066549912434,
+    "duration_f1_macro": 0.46634185091024544
+  },
+  {
+    "pair": "English-Vietnamese",
+    "train_examples": 6768,
+    "test_examples": 1689,
+    "switch_accuracy": 0.9575315935405665,
+    "switch_f1": 0.6742893780722377,
+    "duration_accuracy": 0.7696945010183299,
+    "duration_f1_macro": 0.5414780039760801
+  }
+]

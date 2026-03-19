@@ -1,0 +1,92 @@
+[
+  {
+    "language_1": "Cantonese",
+    "language_2": "English",
+    "count": 119248,
+    "percentage": 50.92
+  },
+  {
+    "language_1": "Arabic",
+    "language_2": "English",
+    "count": 8548,
+    "percentage": 3.65
+  },
+  {
+    "language_1": "English",
+    "language_2": "Philippines",
+    "count": 8537,
+    "percentage": 3.65
+  },
+  {
+    "language_1": "French",
+    "language_2": "German",
+    "count": 8511,
+    "percentage": 3.63
+  },
+  {
+    "language_1": "Chinese",
+    "language_2": "English",
+    "count": 8458,
+    "percentage": 3.61
+  },
+  {
+    "language_1": "English",
+    "language_2": "Vietnamese",
+    "count": 8457,
+    "percentage": 3.61
+  },
+  {
+    "language_1": "English",
+    "language_2": "Malay",
+    "count": 8386,
+    "percentage": 3.58
+  },
+  {
+    "language_1": "English",
+    "language_2": "Japanese",
+    "count": 8385,
+    "percentage": 3.58
+  },
+  {
+    "language_1": "English",
+    "language_2": "Hindi",
+    "count": 8381,
+    "percentage": 3.58
+  },
+  {
+    "language_1": "English",
+    "language_2": "Korean",
+    "count": 8266,
+    "percentage": 3.53
+  },
+  {
+    "language_1": "English",
+    "language_2": "Spanish",
+    "count": 8110,
+    "percentage": 3.46
+  },
+  {
+    "language_1": "English",
+    "language_2": "French",
+    "count": 8070,
+    "percentage": 3.45
+  },
+  {
+    "language_1": "English",
+    "language_2": "Russian",
+    "count": 8017,
+    "percentage": 3.42
+  },
+  {
+    "language_1": "English",
+    "language_2": "Italian",
+    "count": 7979,
+    "percentage": 3.41
+  },
+  {
+    "language_1": "English",
+    "language_2": "German",
+    "count": 6819,
+    "percentage": 2.91
+  }
+]

@@ -53,7 +53,7 @@ class SwitchLinguaProcessor:
         
     def load_dataset(self, language_pairs: Optional[List[str]] = None):
         """
-        Load SwitchLingua dataset from Hugging Face.
+        Load SwitchLingua dataset from Hugging Face
         
         Args:
             language_pairs: List of language pairs to filter (e.g., ['en-es', 'en-hi'])
