@@ -1,12 +1,14 @@
+import argparse
 import json
+import os
 import random
 from collections import Counter
 
 import numpy as np
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
-from sklearn.metrics import accuracy_score, f1_score, classification_report
+from sklearn.metrics import accuracy_score, f1_score
+from torch.utils.data import DataLoader, Dataset
 
 
 # ============================================================
@@ -14,13 +16,32 @@ from sklearn.metrics import accuracy_score, f1_score, classification_report
 # ============================================================
 
 def set_seed(seed=42):
+    """Set random seeds for reproducibility."""
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
 
 
 def safe_div(a, b):
+    """Safely divide two numbers."""
     return a / b if b != 0 else 0.0
+
+
+def normalize_pair_id(lang1: str, lang2: str) -> str:
+    """Normalize a language pair into a canonical pair ID."""
+    left = (lang1 or "unknown").strip().lower()
+    right = (lang2 or "unknown").strip().lower()
+    return "-".join(sorted([left, right]))
+
+
+def ensure_pair_id(example):
+    """Ensure that an example has a pair_id field."""
+    if "pair_id" not in example:
+        example["pair_id"] = normalize_pair_id(
+            example.get("first_language", "unknown"),
+            example.get("second_language", "unknown")
+        )
+    return example
 
 
 # ============================================================
@@ -52,16 +73,19 @@ class StreamingCodeSwitchDataset(Dataset):
         self.max_len = max_len
 
         for ex in data:
+            ex = ensure_pair_id(ex)
+
             tokens = ex["tokens"]
             langs = ex["language_ids"]
             labels = ex["streaming_labels"]
+            pair_id = ex["pair_id"]
 
             for label in labels:
                 pos = label["position"]
                 switch_label = int(label["switch_label"])
                 duration_label = int(label["duration_label"])
 
-                # B1. Position-level sampling to control dataset size
+                # Position-level sampling to control dataset size
                 if switch_label == 1:
                     if random.random() > sample_switch_ratio:
                         continue
@@ -79,7 +103,6 @@ class StreamingCodeSwitchDataset(Dataset):
                 token_ids = [token2id.get(tok, token2id["<UNK>"]) for tok in prefix_tokens]
                 lang_ids = [lang2id.get(lang, lang2id["<UNK>"]) for lang in prefix_langs]
 
-                # B2. Causal scalar features
                 current_lang = langs[pos]
 
                 stability = 0
@@ -97,7 +120,6 @@ class StreamingCodeSwitchDataset(Dataset):
                 context_len = pos + 1
                 switch_rate_so_far = safe_div(switches_so_far, max(1, pos))
 
-                # Simple punctuation feature
                 current_token = tokens[pos]
                 is_punct = 1.0 if not any(ch.isalnum() for ch in current_token) else 0.0
 
@@ -113,7 +135,8 @@ class StreamingCodeSwitchDataset(Dataset):
                     "lang_ids": lang_ids,
                     "features": features,
                     "switch_label": switch_label,
-                    "duration_label": duration_label
+                    "duration_label": duration_label,
+                    "pair_id": pair_id
                 })
 
         if max_samples is not None and len(self.samples) > max_samples:
@@ -128,6 +151,7 @@ class StreamingCodeSwitchDataset(Dataset):
 
 
 def build_vocab(data, min_freq=2):
+    """Build token and language vocabularies from training data."""
     token_counter = Counter()
     lang_counter = Counter()
 
@@ -139,7 +163,6 @@ def build_vocab(data, min_freq=2):
         "<PAD>": 0,
         "<UNK>": 1
     }
-
     for tok, freq in token_counter.items():
         if freq >= min_freq:
             token2id[tok] = len(token2id)
@@ -148,7 +171,6 @@ def build_vocab(data, min_freq=2):
         "<PAD>": 0,
         "<UNK>": 1
     }
-
     for lang in sorted(lang_counter.keys()):
         lang2id[lang] = len(lang2id)
 
@@ -156,6 +178,7 @@ def build_vocab(data, min_freq=2):
 
 
 def collate_fn(batch):
+    """Pad variable-length prefix sequences into one batch."""
     max_seq_len = max(len(x["token_ids"]) for x in batch)
 
     token_batch = []
@@ -191,6 +214,8 @@ def collate_fn(batch):
 # ============================================================
 
 class CausalMultitaskGRU(nn.Module):
+    """GRU-based multitask model for switch and duration prediction."""
+
     def __init__(
         self,
         vocab_size,
@@ -218,7 +243,6 @@ class CausalMultitaskGRU(nn.Module):
         )
 
         self.dropout = nn.Dropout(dropout)
-
         combined_dim = hidden_dim + feat_dim
 
         self.switch_head = nn.Sequential(
@@ -236,11 +260,11 @@ class CausalMultitaskGRU(nn.Module):
         )
 
     def forward(self, token_ids, lang_ids, mask, features):
-        tok = self.token_emb(token_ids)
-        lng = self.lang_emb(lang_ids)
+        """Forward pass."""
+        token_embeddings = self.token_emb(token_ids)
+        lang_embeddings = self.lang_emb(lang_ids)
 
-        x = torch.cat([tok, lng], dim=-1)
-
+        x = torch.cat([token_embeddings, lang_embeddings], dim=-1)
         out, _ = self.gru(x)
 
         lengths = mask.sum(dim=1).long() - 1
@@ -262,6 +286,7 @@ class CausalMultitaskGRU(nn.Module):
 # ============================================================
 
 def compute_class_weights(dataset):
+    """Compute inverse-frequency class weights for both tasks."""
     switch_counter = Counter()
     duration_counter = Counter()
 
@@ -280,10 +305,14 @@ def compute_class_weights(dataset):
     for cls in [0, 1, 2]:
         duration_weights.append(total_duration / max(1, duration_counter[cls]))
 
-    return torch.tensor(switch_weights, dtype=torch.float32), torch.tensor(duration_weights, dtype=torch.float32)
+    return (
+        torch.tensor(switch_weights, dtype=torch.float32),
+        torch.tensor(duration_weights, dtype=torch.float32)
+    )
 
 
 def train_one_epoch(model, loader, optimizer, device, switch_loss_fn, duration_loss_fn, lambda_duration=1.0):
+    """Train the model for one epoch."""
     model.train()
     total_loss = 0.0
 
@@ -320,11 +349,11 @@ def train_one_epoch(model, loader, optimizer, device, switch_loss_fn, duration_l
 
 @torch.no_grad()
 def evaluate(model, loader, device):
+    """Evaluate the multitask model."""
     model.eval()
 
     switch_true = []
     switch_pred = []
-
     duration_true = []
     duration_pred = []
 
@@ -350,73 +379,101 @@ def evaluate(model, loader, device):
             duration_pred.extend(duration_hat[valid].cpu().numpy().tolist())
 
     results = {
-        "switch_accuracy": accuracy_score(switch_true, switch_pred),
-        "switch_f1": f1_score(switch_true, switch_pred, average="binary"),
-        "duration_accuracy": accuracy_score(duration_true, duration_pred) if len(duration_true) > 0 else 0.0,
-        "duration_f1_macro": f1_score(duration_true, duration_pred, average="macro") if len(duration_true) > 0 else 0.0,
+        "switch_accuracy": accuracy_score(switch_true, switch_pred) if switch_true else 0.0,
+        "switch_f1": f1_score(switch_true, switch_pred, average="binary", zero_division=0) if switch_true else 0.0,
+        "duration_accuracy": accuracy_score(duration_true, duration_pred) if duration_true else 0.0,
+        "duration_f1_macro": f1_score(duration_true, duration_pred, average="macro", zero_division=0) if duration_true else 0.0,
+        "num_position_samples": len(switch_true),
+        "num_duration_samples": len(duration_true)
     }
 
     return results
 
 
-# ============================================================
-# E. MAIN
-# ============================================================
+def run_training_experiment(
+    train_data,
+    test_data,
+    model_output_path="./models/causal_multitask_gru.pt",
+    results_output_path="./results/proposed_model_results.json",
+    seed=42,
+    epochs=5,
+    batch_size=256,
+    learning_rate=1e-3,
+    max_len=40,
+    min_freq=2,
+    max_train_samples=800000,
+    max_test_samples=200000,
+    sample_switch_ratio=1.0,
+    sample_noswitch_ratio=0.20,
+    lambda_duration=1.0,
+    experiment_name="default"
+):
+    """
+    Train and evaluate the proposed model on one train/test split.
 
-def main():
-    set_seed(42)
+    This function is reusable for:
+    1. Standard train/test experiments
+    2. Leave-one-pair-out universality experiments
+    """
+    set_seed(seed)
+
+    os.makedirs(os.path.dirname(model_output_path), exist_ok=True)
+    os.makedirs(os.path.dirname(results_output_path), exist_ok=True)
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print("Using device:", device)
 
-    with open("./data/processed/train_data.json", "r", encoding="utf-8") as f:
-        train_data = json.load(f)
+    train_data = [ensure_pair_id(ex) for ex in train_data]
+    test_data = [ensure_pair_id(ex) for ex in test_data]
 
-    with open("./data/processed/test_data.json", "r", encoding="utf-8") as f:
-        test_data = json.load(f)
-
+    print(f"Experiment name: {experiment_name}")
     print(f"Loaded train examples: {len(train_data)}")
     print(f"Loaded test examples: {len(test_data)}")
 
-    token2id, lang2id = build_vocab(train_data, min_freq=2)
+    token2id, lang2id = build_vocab(train_data, min_freq=min_freq)
 
     print(f"Token vocab size: {len(token2id)}")
     print(f"Language vocab size: {len(lang2id)}")
 
-    # E1. Sample positions to make training feasible
     train_dataset = StreamingCodeSwitchDataset(
         train_data,
         token2id,
         lang2id,
-        max_len=40,
-        max_samples=800000,
-        sample_switch_ratio=1.0,
-        sample_noswitch_ratio=0.20
+        max_len=max_len,
+        max_samples=max_train_samples,
+        sample_switch_ratio=sample_switch_ratio,
+        sample_noswitch_ratio=sample_noswitch_ratio
     )
 
     test_dataset = StreamingCodeSwitchDataset(
         test_data,
         token2id,
         lang2id,
-        max_len=40,
-        max_samples=200000,
+        max_len=max_len,
+        max_samples=max_test_samples,
         sample_switch_ratio=1.0,
-        sample_noswitch_ratio=0.20
+        sample_noswitch_ratio=sample_noswitch_ratio
     )
 
     print(f"Train position samples: {len(train_dataset)}")
     print(f"Test position samples: {len(test_dataset)}")
 
+    if len(train_dataset) == 0:
+        raise ValueError("Training dataset is empty after position-level sampling.")
+
+    if len(test_dataset) == 0:
+        raise ValueError("Test dataset is empty after position-level sampling.")
+
     train_loader = DataLoader(
         train_dataset,
-        batch_size=256,
+        batch_size=batch_size,
         shuffle=True,
         collate_fn=collate_fn
     )
 
     test_loader = DataLoader(
         test_dataset,
-        batch_size=256,
+        batch_size=batch_size,
         shuffle=False,
         collate_fn=collate_fn
     )
@@ -439,12 +496,11 @@ def main():
     switch_loss_fn = nn.CrossEntropyLoss(weight=switch_weights)
     duration_loss_fn = nn.CrossEntropyLoss(weight=duration_weights)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
     best_switch_f1 = -1.0
     best_results = None
-
-    epochs = 5
+    history = []
 
     for epoch in range(1, epochs + 1):
         print(f"\nEpoch {epoch}/{epochs}")
@@ -456,10 +512,17 @@ def main():
             device=device,
             switch_loss_fn=switch_loss_fn,
             duration_loss_fn=duration_loss_fn,
-            lambda_duration=1.0
+            lambda_duration=lambda_duration
         )
 
         results = evaluate(model, test_loader, device)
+
+        epoch_row = {
+            "epoch": epoch,
+            "train_loss": train_loss,
+            **results
+        }
+        history.append(epoch_row)
 
         print(f"Train Loss: {train_loss:.4f}")
         print(f"Switch Accuracy: {results['switch_accuracy']:.4f}")
@@ -469,17 +532,86 @@ def main():
 
         if results["switch_f1"] > best_switch_f1:
             best_switch_f1 = results["switch_f1"]
-            best_results = results
-            torch.save(model.state_dict(), "./models/causal_multitask_gru.pt")
-            print("✓ Saved best model")
+            best_results = dict(results)
+            torch.save(model.state_dict(), model_output_path)
+            print(f"✓ Saved best model to {model_output_path}")
 
-    print("\nBest Results:")
-    print(best_results)
+    payload = {
+        "experiment_name": experiment_name,
+        "seed": seed,
+        "epochs": epochs,
+        "batch_size": batch_size,
+        "learning_rate": learning_rate,
+        "max_len": max_len,
+        "min_freq": min_freq,
+        "max_train_samples": max_train_samples,
+        "max_test_samples": max_test_samples,
+        "num_train_examples": len(train_data),
+        "num_test_examples": len(test_data),
+        "num_train_position_samples": len(train_dataset),
+        "num_test_position_samples": len(test_dataset),
+        "token_vocab_size": len(token2id),
+        "language_vocab_size": len(lang2id),
+        "best_results": best_results,
+        "history": history
+    }
 
-    with open("./results/proposed_model_results.json", "w", encoding="utf-8") as f:
-        json.dump(best_results, f, indent=2)
+    with open(results_output_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f, indent=2, ensure_ascii=False)
 
-    print("✓ Saved proposed_model_results.json")
+    print(f"✓ Saved results to {results_output_path}")
+    return payload
+
+
+# ============================================================
+# E. MAIN
+# ============================================================
+
+def main():
+    """Train the proposed model on the standard saved train/test split."""
+    parser = argparse.ArgumentParser(description="Train the proposed causal GRU model")
+    parser.add_argument("--train_path", type=str, default="./data/processed/train_data.json")
+    parser.add_argument("--test_path", type=str, default="./data/processed/test_data.json")
+    parser.add_argument("--model_output_path", type=str, default="./models/causal_multitask_gru.pt")
+    parser.add_argument("--results_output_path", type=str, default="./results/proposed_model_results.json")
+    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--epochs", type=int, default=5)
+    parser.add_argument("--batch_size", type=int, default=256)
+    parser.add_argument("--learning_rate", type=float, default=1e-3)
+    parser.add_argument("--max_len", type=int, default=40)
+    parser.add_argument("--min_freq", type=int, default=2)
+    parser.add_argument("--max_train_samples", type=int, default=800000)
+    parser.add_argument("--max_test_samples", type=int, default=200000)
+    parser.add_argument("--sample_switch_ratio", type=float, default=1.0)
+    parser.add_argument("--sample_noswitch_ratio", type=float, default=0.20)
+    parser.add_argument("--lambda_duration", type=float, default=1.0)
+    parser.add_argument("--experiment_name", type=str, default="standard_train_test")
+    args = parser.parse_args()
+
+    with open(args.train_path, "r", encoding="utf-8") as f:
+        train_data = json.load(f)
+
+    with open(args.test_path, "r", encoding="utf-8") as f:
+        test_data = json.load(f)
+
+    run_training_experiment(
+        train_data=train_data,
+        test_data=test_data,
+        model_output_path=args.model_output_path,
+        results_output_path=args.results_output_path,
+        seed=args.seed,
+        epochs=args.epochs,
+        batch_size=args.batch_size,
+        learning_rate=args.learning_rate,
+        max_len=args.max_len,
+        min_freq=args.min_freq,
+        max_train_samples=args.max_train_samples,
+        max_test_samples=args.max_test_samples,
+        sample_switch_ratio=args.sample_switch_ratio,
+        sample_noswitch_ratio=args.sample_noswitch_ratio,
+        lambda_duration=args.lambda_duration,
+        experiment_name=args.experiment_name
+    )
 
 
 if __name__ == "__main__":

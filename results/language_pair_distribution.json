@@ -1,91 +1,106 @@
 [
   {
-    "language_1": "Cantonese",
-    "language_2": "English",
+    "pair_id": "cantonese-english",
+    "language_1": "cantonese",
+    "language_2": "english",
     "count": 119248,
     "percentage": 50.92
   },
   {
-    "language_1": "Arabic",
-    "language_2": "English",
+    "pair_id": "arabic-english",
+    "language_1": "arabic",
+    "language_2": "english",
     "count": 8548,
     "percentage": 3.65
   },
   {
-    "language_1": "English",
-    "language_2": "Philippines",
+    "pair_id": "english-philippines",
+    "language_1": "english",
+    "language_2": "philippines",
     "count": 8537,
     "percentage": 3.65
   },
   {
-    "language_1": "French",
-    "language_2": "German",
+    "pair_id": "french-german",
+    "language_1": "french",
+    "language_2": "german",
     "count": 8511,
     "percentage": 3.63
   },
   {
-    "language_1": "Chinese",
-    "language_2": "English",
+    "pair_id": "chinese-english",
+    "language_1": "chinese",
+    "language_2": "english",
     "count": 8458,
     "percentage": 3.61
   },
   {
-    "language_1": "English",
-    "language_2": "Vietnamese",
+    "pair_id": "english-vietnamese",
+    "language_1": "english",
+    "language_2": "vietnamese",
     "count": 8457,
     "percentage": 3.61
   },
   {
-    "language_1": "English",
-    "language_2": "Malay",
+    "pair_id": "english-malay",
+    "language_1": "english",
+    "language_2": "malay",
     "count": 8386,
     "percentage": 3.58
   },
   {
-    "language_1": "English",
-    "language_2": "Japanese",
+    "pair_id": "english-japanese",
+    "language_1": "english",
+    "language_2": "japanese",
     "count": 8385,
     "percentage": 3.58
   },
   {
-    "language_1": "English",
-    "language_2": "Hindi",
+    "pair_id": "english-hindi",
+    "language_1": "english",
+    "language_2": "hindi",
     "count": 8381,
     "percentage": 3.58
   },
   {
-    "language_1": "English",
-    "language_2": "Korean",
+    "pair_id": "english-korean",
+    "language_1": "english",
+    "language_2": "korean",
     "count": 8266,
     "percentage": 3.53
   },
   {
-    "language_1": "English",
-    "language_2": "Spanish",
+    "pair_id": "english-spanish",
+    "language_1": "english",
+    "language_2": "spanish",
     "count": 8110,
     "percentage": 3.46
   },
   {
-    "language_1": "English",
-    "language_2": "French",
+    "pair_id": "english-french",
+    "language_1": "english",
+    "language_2": "french",
     "count": 8070,
     "percentage": 3.45
   },
   {
-    "language_1": "English",
-    "language_2": "Russian",
+    "pair_id": "english-russian",
+    "language_1": "english",
+    "language_2": "russian",
     "count": 8017,
     "percentage": 3.42
   },
   {
-    "language_1": "English",
-    "language_2": "Italian",
+    "pair_id": "english-italian",
+    "language_1": "english",
+    "language_2": "italian",
     "count": 7979,
     "percentage": 3.41
   },
   {
-    "language_1": "English",
-    "language_2": "German",
+    "pair_id": "english-german",
+    "language_1": "english",
+    "language_2": "german",
     "count": 6819,
     "percentage": 2.91
   }

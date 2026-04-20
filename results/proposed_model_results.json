@@ -1,6 +1,47 @@
 {
-  "switch_accuracy": 0.864075,
-  "switch_f1": 0.9002396303893903,
-  "duration_accuracy": 0.7200488827785416,
-  "duration_f1_macro": 0.6123496620537239
+  "experiment_name": "standard_train_test",
+  "seed": 42,
+  "epochs": 2,
+  "batch_size": 512,
+  "learning_rate": 0.001,
+  "max_len": 40,
+  "min_freq": 2,
+  "max_train_samples": 200000,
+  "max_test_samples": 50000,
+  "num_train_examples": 187337,
+  "num_test_examples": 46835,
+  "num_train_position_samples": 200000,
+  "num_test_position_samples": 50000,
+  "token_vocab_size": 146906,
+  "language_vocab_size": 9,
+  "best_results": {
+    "switch_accuracy": 0.95294,
+    "switch_f1": 0.9573291260903469,
+    "duration_accuracy": 0.7820638197689159,
+    "duration_f1_macro": 0.7011480435513079,
+    "num_position_samples": 50000,
+    "num_duration_samples": 27609
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.8318019667854699,
+      "switch_accuracy": 0.9487,
+      "switch_f1": 0.9536308910461522,
+      "duration_accuracy": 0.7460248469701909,
+      "duration_f1_macro": 0.6639771154864015,
+      "num_position_samples": 50000,
+      "num_duration_samples": 27609
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.72280426830282,
+      "switch_accuracy": 0.95294,
+      "switch_f1": 0.9573291260903469,
+      "duration_accuracy": 0.7820638197689159,
+      "duration_f1_macro": 0.7011480435513079,
+      "num_position_samples": 50000,
+      "num_duration_samples": 27609
+    }
+  ]
 }

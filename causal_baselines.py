@@ -7,631 +7,672 @@ This module implements several baseline models that respect causal constraints:
 - Last Language Baseline
 - Logistic Regression Baseline (learned features with causal constraints)
 
-All baselines predict only using past information (positions 1 to t)
+All baselines predict only using past information (positions 0 to t)
 to predict what happens at position t+1.
 """
 
-import numpy as np
 import json
+import os
 from collections import Counter, defaultdict
-from typing import List, Dict, Tuple
-from sklearn.metrics import f1_score, accuracy_score, classification_report, confusion_matrix
-from sklearn.linear_model import LogisticRegression
-from sklearn.preprocessing import LabelEncoder
+from typing import Dict, List, Tuple
+
 import matplotlib.pyplot as plt
-import seaborn as sns
+import numpy as np
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report, f1_score
+from sklearn.preprocessing import LabelEncoder
 
 
 class MajorityClassBaseline:
     """
-    Simplest baseline: Always predict the majority class.
-    
-    This establishes a lower bound on model performance.
+    Simplest baseline: always predict the majority class observed in training.
     """
-    
+
     def __init__(self):
-        self.switch_majority = None
-        self.duration_majority = None
+        self.switch_majority = 0
+        self.duration_majority = 0
         self.name = "Majority Class Baseline"
-    
+        self.is_trained = False
+
     def train(self, training_data: List[Dict]):
         """
-        Find the majority class in training data.
-        
+        Find the majority class in the training data.
+
         Args:
             training_data: List of processed examples with streaming labels
         """
         switch_labels = []
         duration_labels = []
-        
+
         for example in training_data:
-            for label_info in example['streaming_labels']:
-                switch_labels.append(label_info['switch_label'])
-                if label_info['switch_label'] == 1:  # Only count duration when switch occurs
-                    duration_labels.append(label_info['duration_label'])
-        
-        # Find majority classes
+            for label_info in example["streaming_labels"]:
+                switch_labels.append(int(label_info["switch_label"]))
+
+                # Duration is only evaluated when a true switch occurs
+                if int(label_info["switch_label"]) == 1:
+                    duration_labels.append(int(label_info["duration_label"]))
+
         switch_counts = Counter(switch_labels)
         self.switch_majority = switch_counts.most_common(1)[0][0]
-        
+
         if duration_labels:
             duration_counts = Counter(duration_labels)
             self.duration_majority = duration_counts.most_common(1)[0][0]
         else:
-            self.duration_majority = 0  # Default to small
-        
+            self.duration_majority = 0
+
+        self.is_trained = True
+
         print(f"\n{self.name} - Training Complete")
-        print(f"  Switch majority class: {self.switch_majority} "
-              f"({switch_counts[self.switch_majority]}/{len(switch_labels)} = "
-              f"{switch_counts[self.switch_majority]/len(switch_labels)*100:.1f}%)")
+        print(
+            f"  Switch majority class: {self.switch_majority} "
+            f"({switch_counts[self.switch_majority]}/{len(switch_labels)} = "
+            f"{switch_counts[self.switch_majority] / max(1, len(switch_labels)) * 100:.1f}%)"
+        )
         print(f"  Duration majority class: {self.duration_majority}")
-    
-    def predict(self, test_data: List[Dict]) -> Tuple[np.ndarray, np.ndarray]:
+
+    def predict(self, prefix_tokens: List[str], prefix_langs: List[str] = None) -> Dict[str, int]:
         """
-        Predict using majority class for all instances.
-        
+        Predict using the majority class baseline.
+
         Args:
-            test_data: List of processed examples
-            
+            prefix_tokens: Tokens up to the current position
+            prefix_langs: Language IDs up to the current position
+
         Returns:
-            (switch_predictions, duration_predictions)
+            Dictionary with switch and duration predictions
         """
-        num_instances = sum(len(ex['streaming_labels']) for ex in test_data)
-        
-        switch_preds = np.full(num_instances, self.switch_majority)
-        duration_preds = np.full(num_instances, self.duration_majority)
-        
-        return switch_preds, duration_preds
+        if not self.is_trained:
+            raise ValueError("Model not trained. Call train() first.")
+
+        return {
+            "switch_label": int(self.switch_majority),
+            "duration_label": int(self.duration_majority),
+        }
 
 
 class NGramBaseline:
     """
-    N-gram based baseline using historical language patterns.
-    
+    N-gram baseline using historical language patterns only.
+
     Uses the past N language IDs to predict if the next token will switch.
-    Respects causal constraint: only uses past information.
     """
-    
+
     def __init__(self, n: int = 3):
-        """
-        Args:
-            n: Number of previous language IDs to consider (default=3)
-        """
         self.n = n
-        self.switch_probs = defaultdict(lambda: {'switch': 0, 'no_switch': 0})
+        self.switch_probs = defaultdict(lambda: {"switch": 0, "no_switch": 0})
         self.duration_probs = defaultdict(lambda: {0: 0, 1: 0, 2: 0})
+        self.global_switch_majority = 0
+        self.global_duration_majority = 0
         self.name = f"{n}-gram Baseline"
-    
-    def _get_context(self, language_ids: List[str], position: int) -> str:
+        self.is_trained = False
+
+    def _get_context_from_prefix(self, prefix_langs: List[str]) -> str:
         """
-        Get the N-gram context for prediction at position.
-        
+        Build an N-gram context from the visible language prefix.
+
         Args:
-            language_ids: Full sequence of language IDs
-            position: Current position (predicting position+1)
-            
+            prefix_langs: Language IDs visible to the model up to current position
+
         Returns:
             String representation of N-gram context
         """
-        start = max(0, position - self.n + 1)
-        context = language_ids[start:position + 1]
-        return '-'.join(context)
-    
+        if not prefix_langs:
+            return "<EMPTY>"
+
+        context = prefix_langs[-self.n :]
+        return "-".join(context)
+
     def train(self, training_data: List[Dict]):
         """
         Learn N-gram statistics from training data.
-        
+
         Args:
             training_data: List of processed examples
         """
+        switch_labels = []
+        duration_labels = []
+
         for example in training_data:
-            language_ids = example['language_ids']
-            
-            for label_info in example['streaming_labels']:
-                position = label_info['position']
-                
-                # Get N-gram context (only past information)
-                context = self._get_context(language_ids, position)
-                
-                # Update switch statistics
-                if label_info['switch_label'] == 1:
-                    self.switch_probs[context]['switch'] += 1
+            language_ids = example["language_ids"]
+
+            for label_info in example["streaming_labels"]:
+                position = int(label_info["position"])
+                prefix_langs = language_ids[: position + 1]
+                context = self._get_context_from_prefix(prefix_langs)
+
+                switch_label = int(label_info["switch_label"])
+                duration_label = int(label_info["duration_label"])
+
+                switch_labels.append(switch_label)
+
+                if switch_label == 1:
+                    self.switch_probs[context]["switch"] += 1
+                    self.duration_probs[context][duration_label] += 1
+                    duration_labels.append(duration_label)
                 else:
-                    self.switch_probs[context]['no_switch'] += 1
-                
-                # Update duration statistics (only when switch occurs)
-                if label_info['switch_label'] == 1:
-                    dur_class = label_info['duration_label']
-                    self.duration_probs[context][dur_class] += 1
-        
+                    self.switch_probs[context]["no_switch"] += 1
+
+        switch_counts = Counter(switch_labels)
+        self.global_switch_majority = switch_counts.most_common(1)[0][0]
+
+        if duration_labels:
+            duration_counts = Counter(duration_labels)
+            self.global_duration_majority = duration_counts.most_common(1)[0][0]
+        else:
+            self.global_duration_majority = 0
+
+        self.is_trained = True
+
         print(f"\n{self.name} - Training Complete")
         print(f"  Unique {self.n}-gram contexts: {len(self.switch_probs)}")
-        print(f"  Total observations: {sum(v['switch'] + v['no_switch'] for v in self.switch_probs.values())}")
-    
-    def predict(self, test_data: List[Dict]) -> Tuple[np.ndarray, np.ndarray]:
+        print(
+            f"  Total observations: "
+            f"{sum(v['switch'] + v['no_switch'] for v in self.switch_probs.values())}"
+        )
+
+    def predict(self, prefix_tokens: List[str], prefix_langs: List[str]) -> Dict[str, int]:
         """
-        Predict using N-gram probabilities.
-        
+        Predict using learned N-gram statistics.
+
         Args:
-            test_data: List of processed examples
-            
+            prefix_tokens: Tokens up to the current position
+            prefix_langs: Language IDs up to the current position
+
         Returns:
-            (switch_predictions, duration_predictions)
+            Dictionary with switch and duration predictions
         """
-        switch_preds = []
-        duration_preds = []
-        
-        for example in test_data:
-            language_ids = example['language_ids']
-            
-            for label_info in example['streaming_labels']:
-                position = label_info['position']
-                context = self._get_context(language_ids, position)
-                
-                # Predict switch
-                if context in self.switch_probs:
-                    stats = self.switch_probs[context]
-                    # Predict the more frequent outcome
-                    switch_pred = 1 if stats['switch'] > stats['no_switch'] else 0
-                else:
-                    # Unknown context: predict no switch (safe default)
-                    switch_pred = 0
-                
-                switch_preds.append(switch_pred)
-                
-                # Predict duration
-                if switch_pred == 1 and context in self.duration_probs:
-                    dur_stats = self.duration_probs[context]
-                    # Predict the most frequent duration class
-                    duration_pred = max(dur_stats, key=dur_stats.get)
-                else:
-                    duration_pred = 0  # Default to small
-                
-                duration_preds.append(duration_pred)
-        
-        return np.array(switch_preds), np.array(duration_preds)
+        if not self.is_trained:
+            raise ValueError("Model not trained. Call train() first.")
+
+        context = self._get_context_from_prefix(prefix_langs)
+
+        if context in self.switch_probs:
+            stats = self.switch_probs[context]
+            switch_pred = 1 if stats["switch"] > stats["no_switch"] else 0
+        else:
+            switch_pred = self.global_switch_majority
+
+        if switch_pred == 1 and context in self.duration_probs:
+            dur_stats = self.duration_probs[context]
+            duration_pred = max(dur_stats, key=dur_stats.get)
+        else:
+            duration_pred = self.global_duration_majority
+
+        return {
+            "switch_label": int(switch_pred),
+            "duration_label": int(duration_pred),
+        }
 
 
 class LastLanguageBaseline:
     """
-    Simple baseline: Predict that the next token will be the same language as current.
-    
-    This is equivalent to predicting "no switch" always, but contextually motivated.
+    Simple baseline: always predict no switch.
+
+    This corresponds to predicting that the next token stays in the same language
+    as the current visible language.
     """
-    
+
     def __init__(self):
         self.name = "Last Language Baseline"
-    
+        self.is_trained = False
+
     def train(self, training_data: List[Dict]):
-        """No training needed for this baseline."""
+        """
+        No training is required for this baseline.
+        """
+        self.is_trained = True
         print(f"\n{self.name} - No training required")
-    
-    def predict(self, test_data: List[Dict]) -> Tuple[np.ndarray, np.ndarray]:
+
+    def predict(self, prefix_tokens: List[str], prefix_langs: List[str]) -> Dict[str, int]:
         """
-        Predict: next token will have same language as current token.
-        
+        Predict that the next token will not switch language.
+
         Args:
-            test_data: List of processed examples
-            
+            prefix_tokens: Tokens up to the current position
+            prefix_langs: Language IDs up to the current position
+
         Returns:
-            (switch_predictions, duration_predictions)
+            Dictionary with switch and duration predictions
         """
-        switch_preds = []
-        duration_preds = []
-        
-        for example in test_data:
-            for label_info in example['streaming_labels']:
-                # Always predict no switch
-                switch_preds.append(0)
-                duration_preds.append(0)  # Duration doesn't matter if no switch
-        
-        return np.array(switch_preds), np.array(duration_preds)
+        if not self.is_trained:
+            raise ValueError("Model not trained. Call train() first.")
+
+        return {
+            "switch_label": 0,
+            "duration_label": 0,
+        }
 
 
 class LogisticRegressionBaseline:
     """
-    Learned baseline using Logistic Regression with hand-crafted features.
-    
-    Extracts causal features from historical context to predict switches and durations.
-    Features include: current language, previous languages, position, context patterns.
+    Learned baseline using Logistic Regression with hand-crafted causal features.
     """
-    
+
     def __init__(self, context_window: int = 5):
-        """
-        Args:
-            context_window: Number of previous positions to use as features
-        """
         self.context_window = context_window
-        self.switch_model = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced')
-        self.duration_model = LogisticRegression(max_iter=1000, random_state=42, class_weight='balanced')
+        self.switch_model = LogisticRegression(
+            max_iter=1000,
+            random_state=42,
+            class_weight="balanced"
+        )
+        self.duration_model = LogisticRegression(
+            max_iter=1000,
+            random_state=42,
+            class_weight="balanced"
+        )
         self.lang_encoder = LabelEncoder()
         self.fitted = False
         self.name = "Logistic Regression Baseline"
-    
-    def _extract_features(self, language_ids: List[str], position: int) -> np.ndarray:
+        self.default_duration = 0
+
+    def _extract_features(self, prefix_tokens: List[str], prefix_langs: List[str]) -> np.ndarray:
         """
-        Extract causal features for prediction at position.
-        
-        CAUSAL CONSTRAINT: Only uses information from positions 0 to position (inclusive).
-        
+        Extract causal features from the visible prefix only.
+
         Args:
-            language_ids: Full sequence of language IDs
-            position: Current position (predicting position+1)
-            
+            prefix_tokens: Tokens up to the current position
+            prefix_langs: Language IDs up to the current position
+
         Returns:
-            Feature vector as numpy array
+            Numpy feature vector
         """
+        if not prefix_langs:
+            return np.zeros(self.context_window + 5, dtype=float)
+
         features = []
-        
-        # Feature 1: Current language (one-hot encoded position in vocabulary)
-        current_lang = language_ids[position]
+        position = len(prefix_langs) - 1
+        current_lang = prefix_langs[-1]
+
+        # Feature 1: current language
         current_lang_encoded = self.lang_encoder.transform([current_lang])[0]
         features.append(current_lang_encoded)
-        
-        # Feature 2-6: Previous N languages (with padding for early positions)
+
+        # Feature 2..(context_window+1): previous languages
         for i in range(1, self.context_window + 1):
-            if position - i >= 0:
-                prev_lang = language_ids[position - i]
+            if len(prefix_langs) - 1 - i >= 0:
+                prev_lang = prefix_langs[-1 - i]
                 prev_lang_encoded = self.lang_encoder.transform([prev_lang])[0]
                 features.append(prev_lang_encoded)
             else:
-                features.append(-1)  # Padding for positions near start
-        
-        # Feature 7: Position in sequence (normalized)
-        features.append(position / 100.0)  # Normalize to ~0-1 range
-        
-        # Feature 8: Context length
-        features.append(min(position + 1, 10) / 10.0)  # Capped and normalized
-        
-        # Feature 9: Number of switches seen so far
-        switches_so_far = sum(1 for i in range(position) 
-                            if language_ids[i] != language_ids[i+1] if i+1 <= position)
-        features.append(switches_so_far / max(position, 1))  # Switch rate so far
-        
-        # Feature 10: Stability feature - how long have we been in current language?
+                features.append(-1)
+
+        # Feature: normalized position
+        features.append(position / 100.0)
+
+        # Feature: normalized prefix length
+        features.append(min(len(prefix_langs), 10) / 10.0)
+
+        # Feature: switch rate so far
+        switches_so_far = 0
+        for i in range(len(prefix_langs) - 1):
+            if prefix_langs[i] != prefix_langs[i + 1]:
+                switches_so_far += 1
+        switch_rate = switches_so_far / max(1, len(prefix_langs) - 1)
+        features.append(switch_rate)
+
+        # Feature: stability length in current language
         stability = 0
-        for i in range(position, -1, -1):
-            if language_ids[i] == current_lang:
+        for i in range(len(prefix_langs) - 1, -1, -1):
+            if prefix_langs[i] == current_lang:
                 stability += 1
             else:
                 break
-        features.append(min(stability, 10) / 10.0)  # Capped and normalized
-        
-        return np.array(features)
-    
+        features.append(min(stability, 10) / 10.0)
+
+        return np.array(features, dtype=float)
+
     def train(self, training_data: List[Dict]):
         """
         Train logistic regression models on extracted features.
-        
+
         Args:
             training_data: List of processed examples with streaming labels
         """
-        # Fit language encoder on all languages in training data
         all_langs = []
         for example in training_data:
-            all_langs.extend(example['language_ids'])
-        
+            all_langs.extend(example["language_ids"])
+
         unique_langs = sorted(list(set(all_langs)))
         self.lang_encoder.fit(unique_langs)
-        
+
         print(f"\n{self.name} - Extracting features...")
-        
-        # Extract features and labels
+
         X_switch = []
         y_switch = []
         X_duration = []
         y_duration = []
-        
+
         for example in training_data:
-            language_ids = example['language_ids']
-            
-            for label_info in example['streaming_labels']:
-                position = label_info['position']
-                
-                # Extract causal features
-                features = self._extract_features(language_ids, position)
-                
-                # Switch prediction task
+            tokens = example["tokens"]
+            language_ids = example["language_ids"]
+
+            for label_info in example["streaming_labels"]:
+                position = int(label_info["position"])
+                prefix_tokens = tokens[: position + 1]
+                prefix_langs = language_ids[: position + 1]
+
+                features = self._extract_features(prefix_tokens, prefix_langs)
+
+                switch_label = int(label_info["switch_label"])
+                duration_label = int(label_info["duration_label"])
+
                 X_switch.append(features)
-                y_switch.append(label_info['switch_label'])
-                
-                # Duration prediction task (only for switches)
-                if label_info['switch_label'] == 1:
+                y_switch.append(switch_label)
+
+                if switch_label == 1:
                     X_duration.append(features)
-                    y_duration.append(label_info['duration_label'])
-        
+                    y_duration.append(duration_label)
+
         X_switch = np.array(X_switch)
         y_switch = np.array(y_switch)
-        
+
         print(f"  Training switch model on {len(X_switch)} instances...")
         self.switch_model.fit(X_switch, y_switch)
-        
+
         if len(X_duration) > 0:
             X_duration = np.array(X_duration)
             y_duration = np.array(y_duration)
             print(f"  Training duration model on {len(X_duration)} switch instances...")
             self.duration_model.fit(X_duration, y_duration)
-        
+            self.default_duration = Counter(y_duration).most_common(1)[0][0]
+        else:
+            self.default_duration = 0
+
         self.fitted = True
         print(f"✓ {self.name} - Training Complete")
         print(f"  Features per instance: {X_switch.shape[1]}")
         print(f"  Unique languages: {len(unique_langs)}")
-    
-    def predict(self, test_data: List[Dict]) -> Tuple[np.ndarray, np.ndarray]:
+
+    def predict(self, prefix_tokens: List[str], prefix_langs: List[str]) -> Dict[str, int]:
         """
-        Predict using trained logistic regression models.
-        
+        Predict using the trained logistic regression models.
+
         Args:
-            test_data: List of processed examples
-            
+            prefix_tokens: Tokens up to the current position
+            prefix_langs: Language IDs up to the current position
+
         Returns:
-            (switch_predictions, duration_predictions)
+            Dictionary with switch and duration predictions
         """
         if not self.fitted:
             raise ValueError("Model not trained. Call train() first.")
-        
-        X_test = []
-        
-        for example in test_data:
-            language_ids = example['language_ids']
-            
-            for label_info in example['streaming_labels']:
-                position = label_info['position']
-                features = self._extract_features(language_ids, position)
-                X_test.append(features)
-        
-        X_test = np.array(X_test)
-        
-        # Predict switches
-        switch_preds = self.switch_model.predict(X_test)
-        
-        # Predict durations
-        duration_preds = self.duration_model.predict(X_test)
-        
-        return switch_preds, duration_preds
+
+        features = self._extract_features(prefix_tokens, prefix_langs).reshape(1, -1)
+
+        switch_pred = int(self.switch_model.predict(features)[0])
+
+        if switch_pred == 1:
+            duration_pred = int(self.duration_model.predict(features)[0])
+        else:
+            duration_pred = int(self.default_duration)
+
+        return {
+            "switch_label": switch_pred,
+            "duration_label": duration_pred,
+        }
 
 
 class BaselineEvaluator:
     """
-    Evaluate baseline models and compare their performance.
+    Evaluate baseline models on streaming code-switch prediction.
     """
-    
+
     def __init__(self):
         self.results = {}
-    
-    def evaluate_model(self, 
-                      model, 
-                      model_name: str,
-                      test_data: List[Dict]) -> Dict:
+
+    def evaluate_model(self, model, model_name: str, test_data: List[Dict]) -> Dict:
         """
         Evaluate a baseline model on test data.
-        
+
         Args:
-            model: Baseline model instance
-            model_name: Name for reporting
+            model: Trained baseline model with predict(prefix_tokens, prefix_langs)
+            model_name: Name of the model for reporting
             test_data: List of processed test examples
-            
+
         Returns:
             Dictionary containing evaluation metrics
         """
-        print(f"\n{'='*60}")
+        print("\n" + "=" * 60)
         print(f"Evaluating: {model_name}")
-        print(f"{'='*60}")
-        
-        # Get ground truth labels
+        print("=" * 60)
+
         switch_true = []
+        switch_pred = []
         duration_true = []
-        
+        duration_pred = []
+
         for example in test_data:
-            for label_info in example['streaming_labels']:
-                switch_true.append(label_info['switch_label'])
-                # Only evaluate duration when switch actually occurs
-                if label_info['switch_label'] == 1:
-                    duration_true.append(label_info['duration_label'])
-        
-        # Get predictions
-        switch_pred, duration_pred = model.predict(test_data)
-        
-        # Filter duration predictions to only switches
-        duration_pred_filtered = []
-        for i, switch in enumerate(switch_true):
-            if switch == 1:
-                duration_pred_filtered.append(duration_pred[i])
-        
-        # Calculate metrics for switch prediction
-        switch_f1 = f1_score(switch_true, switch_pred, average='binary')
-        switch_accuracy = accuracy_score(switch_true, switch_pred)
-        
-        print(f"\nSwitch Prediction (Binary):")
+            tokens = example["tokens"]
+            language_ids = example["language_ids"]
+            streaming_labels = example["streaming_labels"]
+
+            for label_info in streaming_labels:
+                pos = int(label_info["position"])
+
+                prefix_tokens = tokens[: pos + 1]
+                prefix_langs = language_ids[: pos + 1]
+
+                pred = model.predict(prefix_tokens, prefix_langs)
+
+                true_switch = int(label_info["switch_label"])
+                true_duration = int(label_info["duration_label"])
+
+                pred_switch = int(pred.get("switch_label", 0))
+                pred_duration = int(pred.get("duration_label", 0))
+
+                switch_true.append(true_switch)
+                switch_pred.append(pred_switch)
+
+                if true_switch == 1 and true_duration != -1:
+                    duration_true.append(true_duration)
+                    duration_pred.append(pred_duration)
+
+        if len(switch_true) == 0:
+            switch_accuracy = 0.0
+            switch_f1 = 0.0
+        else:
+            switch_accuracy = accuracy_score(switch_true, switch_pred)
+            switch_f1 = f1_score(
+                switch_true,
+                switch_pred,
+                average="binary",
+                zero_division=0
+            )
+
+        print("\nSwitch Prediction (Binary):")
         print(f"  Accuracy: {switch_accuracy:.4f}")
         print(f"  F1-Score: {switch_f1:.4f}")
+
         print("\nClassification Report:")
-        print(classification_report(switch_true, switch_pred, 
-                                   target_names=['No Switch', 'Switch'],
-                                   digits=4))
-        
-        # Calculate metrics for duration prediction
-        if len(duration_true) > 0:
-            duration_accuracy = accuracy_score(duration_true, duration_pred_filtered)
-            duration_f1_macro = f1_score(duration_true, duration_pred_filtered, 
-                                        average='macro')
-            
-            print(f"\nDuration Prediction (3-class, on switches only):")
-            print(f"  Accuracy: {duration_accuracy:.4f}")
-            print(f"  F1-Score (Macro): {duration_f1_macro:.4f}")
-            print("\nClassification Report:")
-            print(classification_report(duration_true, duration_pred_filtered,
-                                       target_names=['Small', 'Medium', 'Large'],
-                                       digits=4))
+        if len(switch_true) == 0:
+            print("No switch samples available for this evaluation split.")
         else:
+            print(classification_report(
+                switch_true,
+                switch_pred,
+                labels=[0, 1],
+                target_names=["No Switch", "Switch"],
+                digits=4,
+                zero_division=0
+            ))
+
+        if len(duration_true) == 0:
             duration_accuracy = 0.0
             duration_f1_macro = 0.0
-            print("\nNo switches in test data - duration metrics not applicable")
-        
-        # Store results
+        else:
+            duration_accuracy = accuracy_score(duration_true, duration_pred)
+            duration_f1_macro = f1_score(
+                duration_true,
+                duration_pred,
+                average="macro",
+                zero_division=0
+            )
+
+        print("\nDuration Prediction (3-class, on switches only):")
+        print(f"  Accuracy: {duration_accuracy:.4f}")
+        print(f"  F1-Score (Macro): {duration_f1_macro:.4f}")
+
+        print("\nClassification Report:")
+        if len(duration_true) == 0:
+            print("No duration samples available for this evaluation split.")
+        else:
+            print(classification_report(
+                duration_true,
+                duration_pred,
+                labels=[0, 1, 2],
+                target_names=["Small", "Medium", "Large"],
+                digits=4,
+                zero_division=0
+            ))
+
         results = {
-            'switch_accuracy': switch_accuracy,
-            'switch_f1': switch_f1,
-            'duration_accuracy': duration_accuracy,
-            'duration_f1_macro': duration_f1_macro,
-            'num_test_instances': len(switch_true),
-            'num_switches': sum(switch_true)
+            "model_name": model_name,
+            "switch_accuracy": float(switch_accuracy),
+            "switch_f1": float(switch_f1),
+            "duration_accuracy": float(duration_accuracy),
+            "duration_f1_macro": float(duration_f1_macro),
+            "num_test_instances": int(len(switch_true)),
+            "num_switches": int(sum(switch_true)),
+            "num_duration_instances": int(len(duration_true)),
         }
-        
+
         self.results[model_name] = results
-        
         return results
-    
+
     def compare_models(self, save_path: str = "./figures/baseline_comparison.png"):
         """
-        Create comparison visualization of all evaluated models.
-        
+        Create a comparison visualization of all evaluated models.
+
         Args:
             save_path: Path to save comparison figure
         """
         if not self.results:
             print("No results to compare. Run evaluate_model() first.")
             return
-        
-        # Prepare data for plotting
+
         models = list(self.results.keys())
-        switch_f1 = [self.results[m]['switch_f1'] for m in models]
-        switch_acc = [self.results[m]['switch_accuracy'] for m in models]
-        duration_acc = [self.results[m]['duration_accuracy'] for m in models]
-        
-        # Create comparison plot
+        switch_f1 = [self.results[m]["switch_f1"] for m in models]
+        switch_acc = [self.results[m]["switch_accuracy"] for m in models]
+        duration_acc = [self.results[m]["duration_accuracy"] for m in models]
+
         fig, axes = plt.subplots(1, 3, figsize=(15, 5))
-        
-        # Plot 1: Switch F1-Score
-        axes[0].bar(range(len(models)), switch_f1, color='#3498db')
+
+        axes[0].bar(range(len(models)), switch_f1)
         axes[0].set_xticks(range(len(models)))
-        axes[0].set_xticklabels(models, rotation=45, ha='right')
-        axes[0].set_ylabel('F1-Score', fontsize=12)
-        axes[0].set_title('Switch Prediction F1-Score', fontsize=13, fontweight='bold')
+        axes[0].set_xticklabels(models, rotation=45, ha="right")
+        axes[0].set_ylabel("F1-Score", fontsize=12)
+        axes[0].set_title("Switch Prediction F1-Score", fontsize=13, fontweight="bold")
         axes[0].set_ylim([0, 1.0])
-        axes[0].grid(axis='y', alpha=0.3)
-        
-        # Add value labels
+        axes[0].grid(axis="y", alpha=0.3)
+
         for i, v in enumerate(switch_f1):
-            axes[0].text(i, v + 0.02, f'{v:.3f}', ha='center', fontsize=10)
-        
-        # Plot 2: Switch Accuracy
-        axes[1].bar(range(len(models)), switch_acc, color='#2ecc71')
+            axes[0].text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=10)
+
+        axes[1].bar(range(len(models)), switch_acc)
         axes[1].set_xticks(range(len(models)))
-        axes[1].set_xticklabels(models, rotation=45, ha='right')
-        axes[1].set_ylabel('Accuracy', fontsize=12)
-        axes[1].set_title('Switch Prediction Accuracy', fontsize=13, fontweight='bold')
+        axes[1].set_xticklabels(models, rotation=45, ha="right")
+        axes[1].set_ylabel("Accuracy", fontsize=12)
+        axes[1].set_title("Switch Prediction Accuracy", fontsize=13, fontweight="bold")
         axes[1].set_ylim([0, 1.0])
-        axes[1].grid(axis='y', alpha=0.3)
-        
+        axes[1].grid(axis="y", alpha=0.3)
+
         for i, v in enumerate(switch_acc):
-            axes[1].text(i, v + 0.02, f'{v:.3f}', ha='center', fontsize=10)
-        
-        # Plot 3: Duration Accuracy
-        axes[2].bar(range(len(models)), duration_acc, color='#e74c3c')
+            axes[1].text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=10)
+
+        axes[2].bar(range(len(models)), duration_acc)
         axes[2].set_xticks(range(len(models)))
-        axes[2].set_xticklabels(models, rotation=45, ha='right')
-        axes[2].set_ylabel('Accuracy', fontsize=12)
-        axes[2].set_title('Duration Prediction Accuracy', fontsize=13, fontweight='bold')
+        axes[2].set_xticklabels(models, rotation=45, ha="right")
+        axes[2].set_ylabel("Accuracy", fontsize=12)
+        axes[2].set_title("Duration Prediction Accuracy", fontsize=13, fontweight="bold")
         axes[2].set_ylim([0, 1.0])
-        axes[2].grid(axis='y', alpha=0.3)
-        
+        axes[2].grid(axis="y", alpha=0.3)
+
         for i, v in enumerate(duration_acc):
-            axes[2].text(i, v + 0.02, f'{v:.3f}', ha='center', fontsize=10)
-        
+            axes[2].text(i, v + 0.02, f"{v:.3f}", ha="center", fontsize=10)
+
         plt.tight_layout()
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, dpi=300, bbox_inches="tight")
         print(f"\n✓ Comparison plot saved to {save_path}")
         plt.close()
-        
-        # Print summary table
-        print(f"\n{'='*80}")
+
+        print(f"\n{'=' * 80}")
         print("BASELINE COMPARISON SUMMARY")
-        print(f"{'='*80}")
+        print(f"{'=' * 80}")
         print(f"{'Model':<25} {'Switch F1':>12} {'Switch Acc':>12} {'Duration Acc':>12}")
-        print(f"{'-'*80}")
+        print(f"{'-' * 80}")
         for model in models:
             r = self.results[model]
-            print(f"{model:<25} {r['switch_f1']:>12.4f} "
-                  f"{r['switch_accuracy']:>12.4f} {r['duration_accuracy']:>12.4f}")
-        print(f"{'='*80}")
-    
+            print(
+                f"{model:<25} {r['switch_f1']:>12.4f} "
+                f"{r['switch_accuracy']:>12.4f} {r['duration_accuracy']:>12.4f}"
+            )
+        print(f"{'=' * 80}")
+
     def save_results(self, output_path: str = "./results/baseline_results.json"):
         """
-        Save evaluation results to JSON file.
-        
+        Save evaluation results to a JSON file.
+
         Args:
             output_path: Path to save results
         """
-        import os
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        
-        with open(output_path, 'w') as f:
-            json.dump(self.results, f, indent=2)
-        
+
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(self.results, f, indent=2, ensure_ascii=False)
+
         print(f"\n✓ Results saved to {output_path}")
 
 
-# Example usage
 if __name__ == "__main__":
-    print("="*60)
+    print("=" * 60)
     print("Causal Baseline Evaluation")
-    print("="*60)
-    
-    # Load processed data
+    print("=" * 60)
+
     print("\nLoading processed data...")
-    with open("./data/processed/processed_data.json", 'r') as f:
+    with open("./data/processed/processed_data.json", "r", encoding="utf-8") as f:
         all_data = json.load(f)
-    
-    # Split into train/test (80/20)
+
     split_idx = int(len(all_data) * 0.8)
     train_data = all_data[:split_idx]
     test_data = all_data[split_idx:]
-    
+
     print(f"  Training examples: {len(train_data)}")
     print(f"  Test examples: {len(test_data)}")
-    
-    # Initialize evaluator
+
     evaluator = BaselineEvaluator()
-    
-    # Baseline 1: Majority Class
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Training Baseline 1: Majority Class")
-    print("="*60)
+    print("=" * 60)
     majority_model = MajorityClassBaseline()
     majority_model.train(train_data)
     evaluator.evaluate_model(majority_model, "Majority Class", test_data)
-    
-    # Baseline 2: Last Language (no switch)
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Training Baseline 2: Last Language")
-    print("="*60)
+    print("=" * 60)
     last_lang_model = LastLanguageBaseline()
     last_lang_model.train(train_data)
     evaluator.evaluate_model(last_lang_model, "Last Language", test_data)
-    
-    # Baseline 3: 3-gram
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("Training Baseline 3: 3-gram")
-    print("="*60)
+    print("=" * 60)
     trigram_model = NGramBaseline(n=3)
     trigram_model.train(train_data)
     evaluator.evaluate_model(trigram_model, "3-gram", test_data)
-    
-    # Baseline 4: 5-gram
-    print("\n" + "="*60)
-    print("Training Baseline 4: 5-gram")
-    print("="*60)
-    fivegram_model = NGramBaseline(n=5)
-    fivegram_model.train(train_data)
-    evaluator.evaluate_model(fivegram_model, "5-gram", test_data)
-    
-    # Compare all baselines
+
+    print("\n" + "=" * 60)
+    print("Training Baseline 4: Logistic Regression")
+    print("=" * 60)
+    lr_model = LogisticRegressionBaseline(context_window=5)
+    lr_model.train(train_data)
+    evaluator.evaluate_model(lr_model, "Logistic Regression", test_data)
+
     evaluator.compare_models(save_path="./figures/baseline_comparison.png")
-    
-    # Save results
     evaluator.save_results(output_path="./results/baseline_results.json")
-    
-    print("\n" + "="*60)
+
+    print("\n" + "=" * 60)
     print("✓ Baseline evaluation complete!")
-    print("="*60)
+    print("=" * 60)

@@ -1,0 +1,47 @@
+{
+  "experiment_name": "leave_one_pair_out::cantonese-english",
+  "seed": 42,
+  "epochs": 2,
+  "batch_size": 256,
+  "learning_rate": 0.001,
+  "max_len": 40,
+  "min_freq": 2,
+  "max_train_samples": 400000,
+  "max_test_samples": 100000,
+  "num_train_examples": 114924,
+  "num_test_examples": 119248,
+  "num_train_position_samples": 400000,
+  "num_test_position_samples": 100000,
+  "token_vocab_size": 117578,
+  "language_vocab_size": 9,
+  "best_results": {
+    "switch_accuracy": 0.94316,
+    "switch_f1": 0.9624981856089097,
+    "duration_accuracy": 0.7547724727817277,
+    "duration_f1_macro": 0.6177096707843212,
+    "num_position_samples": 100000,
+    "num_duration_samples": 74123
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.9605244360744991,
+      "switch_accuracy": 0.94181,
+      "switch_f1": 0.9613178134825934,
+      "duration_accuracy": 0.7140833479486799,
+      "duration_f1_macro": 0.5916728213339196,
+      "num_position_samples": 100000,
+      "num_duration_samples": 74123
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.8549209950600232,
+      "switch_accuracy": 0.94316,
+      "switch_f1": 0.9624981856089097,
+      "duration_accuracy": 0.7547724727817277,
+      "duration_f1_macro": 0.6177096707843212,
+      "num_position_samples": 100000,
+      "num_duration_samples": 74123
+    }
+  ]
+}

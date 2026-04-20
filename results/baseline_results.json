@@ -1,34 +1,32 @@
 {
   "Majority Class": {
-    "switch_accuracy": 0.6599671826859189,
+    "model_name": "Majority Class",
+    "switch_accuracy": 0.8014814162188015,
     "switch_f1": 0.0,
-    "duration_accuracy": 0.7019869355916486,
-    "duration_f1_macro": 0.2749676161478573,
+    "duration_accuracy": 0.6975131599803122,
+    "duration_f1_macro": 0.27393529798944316,
     "num_test_instances": 3019138,
-    "num_switches": 1026606
+    "num_switches": 599355,
+    "num_duration_instances": 599355
   },
   "Last Language": {
-    "switch_accuracy": 0.6599671826859189,
+    "model_name": "Last Language",
+    "switch_accuracy": 0.8014814162188015,
     "switch_f1": 0.0,
-    "duration_accuracy": 0.7019869355916486,
-    "duration_f1_macro": 0.2749676161478573,
+    "duration_accuracy": 0.6975131599803122,
+    "duration_f1_macro": 0.27393529798944316,
     "num_test_instances": 3019138,
-    "num_switches": 1026606
+    "num_switches": 599355,
+    "num_duration_instances": 599355
   },
   "3-gram": {
-    "switch_accuracy": 0.8215994101627683,
-    "switch_f1": 0.686200210669575,
-    "duration_accuracy": 0.724826272201799,
-    "duration_f1_macro": 0.4275990982127909,
+    "model_name": "3-gram",
+    "switch_accuracy": 0.8947904998049112,
+    "switch_f1": 0.6568592077261286,
+    "duration_accuracy": 0.7290770912063802,
+    "duration_f1_macro": 0.4514737955773287,
     "num_test_instances": 3019138,
-    "num_switches": 1026606
-  },
-  "Logistic Regression": {
-    "switch_accuracy": 0.7491234252955645,
-    "switch_f1": 0.637923196394486,
-    "duration_accuracy": 0.5728945671465002,
-    "duration_f1_macro": 0.46910425109254755,
-    "num_test_instances": 3019138,
-    "num_switches": 1026606
+    "num_switches": 599355,
+    "num_duration_instances": 599355
   }
 }

@@ -1,0 +1,47 @@
+{
+  "experiment_name": "leave_one_pair_out::english-philippines",
+  "seed": 42,
+  "epochs": 2,
+  "batch_size": 256,
+  "learning_rate": 0.001,
+  "max_len": 40,
+  "min_freq": 2,
+  "max_train_samples": 400000,
+  "max_test_samples": 100000,
+  "num_train_examples": 225635,
+  "num_test_examples": 8537,
+  "num_train_position_samples": 400000,
+  "num_test_position_samples": 100000,
+  "token_vocab_size": 165723,
+  "language_vocab_size": 9,
+  "best_results": {
+    "switch_accuracy": 0.97719,
+    "switch_f1": 0.0,
+    "duration_accuracy": 0.0,
+    "duration_f1_macro": 0.0,
+    "num_position_samples": 100000,
+    "num_duration_samples": 0
+  },
+  "history": [
+    {
+      "epoch": 1,
+      "train_loss": 0.7714303653742057,
+      "switch_accuracy": 0.97719,
+      "switch_f1": 0.0,
+      "duration_accuracy": 0.0,
+      "duration_f1_macro": 0.0,
+      "num_position_samples": 100000,
+      "num_duration_samples": 0
+    },
+    {
+      "epoch": 2,
+      "train_loss": 0.693704821555491,
+      "switch_accuracy": 0.97347,
+      "switch_f1": 0.0,
+      "duration_accuracy": 0.0,
+      "duration_f1_macro": 0.0,
+      "num_position_samples": 100000,
+      "num_duration_samples": 0
+    }
+  ]
+}
