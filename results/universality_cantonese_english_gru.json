@@ -1,0 +1,8 @@
+{
+  "switch_accuracy": 0.89335,
+  "switch_f1": 0.9298609055933709,
+  "duration_accuracy": 0.6753082516598167,
+  "duration_f1_macro": 0.5250215078262207,
+  "num_position_samples": 20000,
+  "num_duration_samples": 15815
+}
